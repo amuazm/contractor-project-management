@@ -5,7 +5,7 @@ from sklearn.cluster import KMeans
 from sklearn.preprocessing import MinMaxScaler
 from openpyxl import load_workbook
 
-df = pd.read_excel("./Files/Output/Result_ARIMA.xlsx", sheet_name="Reports")
+df = pd.read_excel("./Excel Files/Output/Result_ARIMA.xlsx", sheet_name="Reports")
 
 # Keep actual data, remove forecasted
 df = df[df["Remark"] == "Actual Date"]
@@ -42,7 +42,7 @@ df["Risk"] = y_predicted
 
 print(df)
 
-wb_result = load_workbook("./Files/Output/Result.xlsx")
+wb_result = load_workbook("./Excel Files/Output/Result_ARIMA.xlsx")
 
 wb_result.create_sheet("Clustering")
 ws_clustering = wb_result["Clustering"]
@@ -54,8 +54,9 @@ for index, row in df.iterrows():
         l.append(row[column])
     ws_clustering.append(l)
 
-wb_result.save("./Files/Output/Result_Clustering.xlsx")
+wb_result.save("./Excel Files/Output/Result_Clustering.xlsx")
 
+# See result
 # df1 = df[df["Risk"] == "Higher Risk"]
 # df2 = df[df["Risk"] == "Intermediate Risk"]
 # df3 = df[df["Risk"] == "Lower Risk"]
