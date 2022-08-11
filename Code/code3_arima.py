@@ -20,10 +20,10 @@ ws_budget = wb_result["Budget"]
 ws_reports = wb_result["Reports"]
 
 # Add "Remark" column
-ws_reports.insert_cols(3, 1)
-ws_reports["C1"] = "Remark"
+ws_reports.insert_cols(16)
+ws_reports["P1"] = "Remark"
 for row in ws_reports.iter_rows(min_row=2):
-    row[2].value = "Actual Date"
+    row[15].value = "Actual Date"
 
 # Get Overall Budgets
 overall_budgets = {}
@@ -43,7 +43,8 @@ df_reports = pd.read_excel(dest, sheet_name="Reports")
 
 # Perform ARIMA for each project
 for project_id in overall_budgets:
-    # if project_id != "Project 251":
+    # # Test only one Project
+    # if project_id != "Project 269":
     #     continue
     print("\n\n\n\n\n\n==========================", project_id, "==========================")
     # Filter project ID
@@ -56,6 +57,8 @@ for project_id in overall_budgets:
     df = df.asfreq(pd.infer_freq(df.index))
 
     # # Check ACWP and BCWP df before sending into ARIMA
+    # print(df[["ACWP"]])
+    # print(df[["BCWP"]])
     # plt.plot(df.index, df["ACWP"])
     # plt.plot(df.index, df["BCWP"])
     # plt.show()
@@ -64,38 +67,39 @@ for project_id in overall_budgets:
     months_passed = len(df)
     project_duration = project_durations[project_id]
     planned_months_left = project_duration - months_passed
-    estimated_month_variance = df_reports.loc[df_reports["Project ID"] == project_id]["VAC(t)"].iloc[-1] # Negative means extra months estimated (behind schedule)
-    months_to_predict = np.ceil(project_duration - months_passed - estimated_month_variance)
+    estimated_month_variance = df_reports.loc[df_reports["Project ID"] == project_id]["VAC(t)"].iloc[-1] # Negative means extra months estimated (behind schedule). This line of code just gets the latest VAC(t) for the project
+    months_to_predict = np.ceil(project_duration - months_passed - estimated_month_variance) # basically Duration (Months) - Months Passed - VAC(t). Another way is to just get EAC(t) - Months Passed, I think, which I didn't consider
 
     # Start and ending dates of prediction
     pred_start_date = df.index[-1:]
     pred_start_date = pred_start_date.to_pydatetime()[0] + relativedelta.relativedelta(months=1)
     pred_end_date = pred_start_date + relativedelta.relativedelta(months=months_to_predict)
 
-    # Maximum number of lags possible for AR
-    lags = len(df.index)//3
 
     # Split ACWP and BCWP
     l = []
     l.append(df[["ACWP"]])
     l.append(df[["BCWP"]])
 
-    l2 = []
+    l_predictions = []
     try:
-        for df2 in l:
+        for df_to_predict in l:
+            # # Maximum number of lags possible
+            # lags = len(df.index)//3
+            # # Check ACF and PACF
             # acf_plot = plot_acf(df2, lags=lags)
             # pacf_plot = plot_pacf(df2, lags=lags, method="ywm")
             # plt.show()
 
-            model = ARIMA(df2, order=(1, 2, 0))
+            model = ARIMA(df_to_predict, order=(1, 2, 0))
             model_fit = model.fit()
 
             predictions = model_fit.predict(start=pred_start_date, end=pred_end_date)
             predictions = predictions.to_frame()
             predictions.index.name = "Date"
-            predictions.columns = [list(df2)[0]]
+            predictions.columns = [list(df_to_predict)[0]]
 
-            l2.append(predictions)
+            l_predictions.append(predictions)
 
         # combined_for_testing = pd.concat([df, pd.concat([l2[0], l2[1]], axis=1)])
         # plt.plot(combined_for_testing[["ACWP"]], label="ACWP")
@@ -104,72 +108,93 @@ for project_id in overall_budgets:
         # plt.show()
         # plt.clf()
 
-        df = pd.concat([l2[0], l2[1]], axis=1)
+        df = pd.concat([l_predictions[0], l_predictions[1]], axis=1)
 
         # Place into excel file
         reached_one_hundred_percent = False
+        prev_acwp = 0
+        prev_bcwp = 0
         for index, row in df.iterrows():
+            acwp = row["ACWP"]
+            bcwp = row["BCWP"]
             if reached_one_hundred_percent == False:
-                if row["BCWP"] >= overall_budgets[project_id]:
-                    row["BCWP"] = overall_budgets[project_id]
+                # Never allow acwp or bcwp to have a negative slope
+                if acwp < prev_acwp:
+                    acwp = prev_acwp
+                if bcwp < prev_bcwp:
+                    bcwp = prev_bcwp
+
+                # Mark to stop if project is complete (bcwp = overall budget)
+                if bcwp >= overall_budgets[project_id]:
+                    bcwp = overall_budgets[project_id]
                     reached_one_hundred_percent = True
-                ws_reports.append([project_id, index.date(), "Forecasted", "", "", row["ACWP"], row["BCWP"]])
+
+                ws_reports.append([project_id, index.date(), "", "", acwp, bcwp, "", "", "", "", "", "", "", "", "", "Forecasted"])
+                prev_acwp = acwp
+                prev_bcwp = bcwp
     except Exception as e:
         print(e)
 
-d = {}
+months_passed = {}
 for row in ws_reports.iter_rows(min_row=2):
-    # Completion Percentage
-    if row[3].value == "":
-        row[3].value = row[6].value / overall_budgets[row[0].value]
-
-    # Months Passed
-    if row[0].value not in d:
-        d[row[0].value] = 1
+    project_id = row[0].value
+    # Months Passed Calculation
+    if project_id not in months_passed:
+        months_passed[project_id] = 1
     else:
-        d[row[0].value] += 1
-    if row[4].value == "":
-        row[4].value = d[row[0].value]
+        months_passed[project_id] += 1
 
-    # BCWS
-    if row[7].value == None:
-        bcws = monthly_budgets[row[0].value] * row[4].value
-        if bcws >= overall_budgets[row[0].value]:
-            bcws = overall_budgets[row[0].value]
-        row[7].value = bcws
-    # CPI
-    if row[8].value == None:
-        row[8].value = row[6].value / row[5].value
-    # CV
-    if row[9].value == None:
-        row[9].value = row[6].value - row[5].value
-    # SPI
-    if row[10].value == None:
-        row[10].value = row[6].value / row[7].value
-    # SV
-    if row[11].value == None:
-        row[11].value = row[6].value - row[7].value
-    # EAC
-    if row[12].value == None:
-        row[12].value = row[5].value + (overall_budgets[row[0].value] - row[6].value) / row[8].value
-    # EAC(t)
-    if row[13].value == None:
-        row[13].value = row[4].value + (max(project_durations[row[0].value], row[4].value) - row[4].value * row[10].value) / row[10].value
-    # VAC
-    if row[14].value == None:
-        row[14].value = overall_budgets[row[0].value] - row[12].value
-    # VAC(t)
-    if row[15].value == None:
-        row[15].value = project_durations[row[0].value] - row[13].value
+    if row[15].value == "Forecasted":
+        # Months Passed
+        row[2].value = months_passed[project_id]
 
-    row[3].style = "Percent"
-    row[5].style = "Currency"
-    row[6].style = "Currency"
-    row[7].style = "Currency"
-    row[9].style = "Currency"
-    row[11].style = "Currency"
-    row[12].style = "Currency"
-    row[14].style = "Currency"
+        # Completion
+        row[3].value = row[5].value / overall_budgets[project_id]
+
+        # BCWS
+        bcws = monthly_budgets[project_id] * months_passed[project_id]
+        if bcws >= overall_budgets[project_id]:
+            bcws = overall_budgets[project_id]
+        row[6].value = bcws
+
+        # CPI
+        acwp = row[4].value
+        bcwp = row[5].value
+        row[7].value = bcwp / acwp
+        cpi = row[7].value
+
+        # CV
+        row[8].value = bcwp - acwp
+
+        # SPI
+        row[9].value = bcwp / bcws
+        spi = row[9].value
+
+        # SV
+        row[10].value = bcwp - bcws
+
+        # EAC
+        row[11].value = acwp + (overall_budgets[project_id] - bcwp) / cpi
+        eac = row[11].value
+
+        # EAC(t)
+        row[12].value = months_passed[project_id] + (max(project_durations[project_id], months_passed[project_id]) - months_passed[project_id] * spi) / spi
+        eac_t = row[12].value
+
+        # VAC
+        row[13].value = overall_budgets[project_id] - eac
+
+        # VAC(t)
+        row[14].value = project_durations[project_id] - eac_t
+
+        row[3].style = "Percent"
+        row[4].style = "Currency"
+        row[5].style = "Currency"
+        row[6].style = "Currency"
+        row[8].style = "Currency"
+        row[10].style = "Currency"
+        row[11].style = "Currency"
+        row[13].style = "Currency"
 
 # Save as Result_ARIMA.xlsx
 wb_result.save(dest)
