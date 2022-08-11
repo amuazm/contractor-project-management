@@ -5,6 +5,8 @@ Simulating project progress for a contractor company with Python and openpyxl an
 3. ARIMA model to forecast future trends
 4. K-Means Clustering to group projects and classify them
 
+[Document](https://docs.google.com/document/d/1F3gdVz6H05FGF9EWCHSxroSorEmRNhGYcpC2DmMqhBk/edit?usp=sharing)
+
 This repository will have all significant files related to the project.
 
 # Files Explained: (TODO: Update)
