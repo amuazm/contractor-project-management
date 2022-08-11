@@ -13,11 +13,12 @@ This repository will have all significant files related to the project.
 * _Files_
     * _Input_
         * __Budget Dataset Modified.xlsx__
-            * File used as general reference
+            * File used as general reference.
     * _Output_
         * __Data.xlsx__
             * Direct copy of Budget Dataset Modified.xlsx
             * Used in code to refer from instead of original file just in case
+            * Not much is copied directly from this file. Mainly contains layout which was followed when writing code.
         * __Result.xlsx__
             * Final Excel file to be used in the project
 * __README.md__
